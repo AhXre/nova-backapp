@@ -1,0 +1,1941 @@
+ARQUITECTURA CONCEPTO · V0.1
+
+Asistente Tecnológico Inteligente
+Un asistente de voz que vive en un dispositivo físico con cara expresiva, y que
+comparte recordatorios, historial y estado con una app móvil y una app de escritorio.
+Cada decisión de este documento responde a un criterio de la rúbrica de evaluación.
+Dispositivo · Raspberry Pi 5
+
+Núcleo · Python
+
+Backend · FastAPI + PostgreSQL
+
+Apps · Flutter (móvil + escritorio)
+
+Visión y principios
+El dispositivo es el asistente; las apps son ventanas al mismo asistente. El backend guarda la
+verdad compartida.
+El dispositivo físico ejecuta todo el ciclo de voz de forma autónoma (escuchar, entender, actuar,
+responder y expresarse). No depende de una computadora externa, lo que es requisito para
+obtener el 100% en el criterio 5.1. El backend sincroniza datos entre plataformas y envía
+notificaciones. Las apps de móvil y escritorio consultan y modifican los mismos datos, y reflejan
+en tiempo real el estado del dispositivo.
+
+Modular por puertos
+
+Dirigido por eventos
+
+Cada módulo expone una interfaz (puerto) y se
+
+Un bus interno publica state.changed,
+
+conecta mediante adaptadores. STT, NLU o
+
+intent.resolved, reminder.due. La cara y las
+
+TTS se pueden cambiar sin tocar el resto.
+
+apps se suscriben: nada se activa a mano.
+
+Una sola máquina de estados
+
+Offline primero
+
+El estado del asistente vive en un solo lugar. La
+
+Recordatorios, hora y fecha funcionan sin
+
+interfaz expresiva lo refleja, nunca lo decide.
+
+internet. Los cambios se encolan y se
+sincronizan al reconectar.
+
+Asistente Tecnológico Inteligente · Arquitectura concepto v0.1
+
+1 / 20
+
+Vista general
+
+1.1 · 5.4 · 6.1
+
+Tres plataformas cliente, un backend de sincronización y el núcleo del asistente dentro del
+dispositivo.
+
+CLIENTES
+
+App móvil
+
+App de escritorio
+
+Flutter · Android / iOS
+
+Flutter desktop
+
+REST (CRUD) + WebSocket (eventos en vivo) · push FCM al móvil
+
+BACKEND EN LA NUBE
+
+API REST
+
+Gateway en tiempo
+real
+
+FastAPI · OpenAPI
+
+Scheduler + Push
+
+PostgreSQL
+
+APScheduler · FCM
+
+fuente de verdad
+
+WebSocket
+
+HTTPS + WSS · JWT de dispositivo · outbox y cursor de sincronización
+
+DISPOSITIVO FÍSICO · RASPBERRY PI 5
+Núcleo del asistente (Python) · pipeline de voz
+
+Audio I/O
+wake word +
+VAD
+
+→
+
+STT
+voz a texto
+
+→
+
+NLU
+intención +
+parámetros
+
+→
+
+Diálogo
+contexto
+
+→
+
+Router
+habilidades
+
+→
+
+Respuesta
+TTS
+
+▼ todos los módulos publican eventos ▼
+Servicios de soporte
+
+Máquina de estados
+única fuente del estado
+
+⇄
+
+Bus de eventos
+state.changed · reminder.due
+
+Scheduler local
+
+SQLite + outbox
+
+dispara recordatorios
+
+persistencia local
+
+⇄
+
+→
+
+Cliente de
+sincronización
+
+Motor expresivo
+cara · LED · sonido
+
+Supervisor
+watchdog · logs
+
+REST + WebSocket
+
+Hardware: arreglo de micrófonos · altavoz · pantalla 5 in · botón físico + LED
+
+Figura 1. Componentes y canales de comunicación. La conexión gruesa es el canal de
+sincronización del dispositivo con el backend.
+
+Asistente Tecnológico Inteligente · Arquitectura concepto v0.1
+
+2 / 20
+
+Componentes y responsabilidades
+
+1.1 · 7.1
+
+Cada módulo tiene una responsabilidad, una interfaz pública y un dueño claro de sus datos.
+MÓDULO
+
+RESPONSABILIDAD
+
+INTERFAZ (ENTRADA →
+
+ALMACENA
+
+SALIDA)
+
+Audio I/O
+
+Captura continua, palabra de
+
+Micrófono →
+
+Nada (buffer en
+
+activación, detección de voz
+
+AudioSegment + evento
+
+memoria)
+
+(VAD), cancelación de ruido y
+
+wake.detected
+
+control de ganancia.
+STT
+
+Convertir audio en texto con
+
+AudioSegment →
+
+nivel de confianza.
+
+Transcript{text,
+
+Adaptador en línea y
+
+confidence, lang}
+
+Nada
+
+adaptador local de respaldo.
+NLU
+
+Identificar la intención y
+
+Transcript + Context
+
+extraer parámetros;
+
+→ IntentResult
+
+Nada
+
+normalizar fechas y horas.
+Gestor de
+
+Mantener el contexto de la
+
+IntentResult →
+
+Contexto de
+
+diálogo
+
+sesión, pedir datos faltantes,
+
+Action o
+
+sesión
+
+confirmar acciones
+
+Clarification
+
+(memoria, TTL 2
+
+destructivas, resolver
+
+min)
+
+referencias ("ese", "el de las
+5").
+Router de
+
+Enviar cada acción a la
+
+Action → SkillResult
+
+Nada
+
+habilidades
+
+habilidad que la resuelve.
+
+TimeDateSkill ,
+
+Action →
+
+Recordatorios
+
+ReminderSkill , QASkill ,
+
+SkillResult{speech,
+
+(vía repositorio)
+
+HelpSkill .
+
+data}
+
+Agregar una habilidad no
+modifica el router.
+Habilidades
+
+Asistente Tecnológico Inteligente · Arquitectura concepto v0.1
+
+3 / 20
+
+MÓDULO
+
+RESPONSABILIDAD
+
+INTERFAZ (ENTRADA →
+
+ALMACENA
+
+SALIDA)
+
+Respuesta +
+
+Redactar la respuesta
+
+SkillResult → audio
+
+TTS
+
+hablada y sintetizar el audio.
+
+Máquina de
+
+Única fuente del estado del
+
+Eventos →
+
+estados
+
+asistente y de sus
+
+state.changed
+
+Caché de frases
+frecuentes
+Estado actual
+
+transiciones válidas. Aplica
+tiempos límite.
+Motor
+
+Dibujar la cara y reproducir
+
+state.changed →
+
+expresivo
+
+sonidos según el estado.
+
+pantalla + LED + sonido
+
+Scheduler local
+
+Disparar recordatorios a la
+
+Repositorio →
+
+hora programada, aun sin
+
+reminder.due
+
+Nada
+
+Cola de disparos
+
+conexión.
+Repositorio +
+
+Persistencia local de
+
+SQLite
+
+recordatorios, historial y
+
+CRUD tipado
+
+SQLite
+
+ajustes; cola de cambios
+pendientes (outbox).
+Cliente de
+
+Enviar la outbox, recibir
+
+Outbox ↔ API /
+
+Cursor de última
+
+sincronización
+
+cambios y publicar el estado
+
+WebSocket
+
+sincronización
+
+Health checks → error.*
+
+Logs rotativos
+
+del dispositivo al backend.
+Supervisor
+
+Watchdog, registro
+estructurado de errores,
+reinicio controlado de
+módulos.
+
+Asistente Tecnológico Inteligente · Arquitectura concepto v0.1
+
+4 / 20
+
+Estados de interacción
+
+1.2 · 4.2
+
+Los siete estados que pide la rúbrica, con sus transiciones y lo que percibe el usuario en cada
+uno.
+
+Espera
+descartado o 60 s
+
+reminder.due
+
+silencio 6 s
+
+Notificacion
+
+wake word o botón
+
+usuario responde
+Escucha
+fin de turno
+
+fin de voz (VAD)
+
+recuperación automática 3 s
+
+Procesamiento
+se espera réplica
+
+intención válida
+aclaración o dato faltante
+
+Ejecucion
+
+fallo de STT o NLU
+fallo de habilidad
+
+resultado de habilidad
+
+Respuesta
+
+Error
+
+Figura 2. Máquina de estados del asistente. Toda transición no listada se rechaza y se registra.
+ESTADO
+
+QUÉ HACE EL
+
+RETROALIMENTACIÓN
+
+SALIDA
+
+Escucha solo la
+
+Ojos entreabiertos, parpadeo
+
+Wake word,
+
+palabra de
+
+lento, LED apagado.
+
+botón o
+
+SISTEMA
+
+ESPERA
+
+activación.
+
+Asistente Tecnológico Inteligente · Arquitectura concepto v0.1
+
+recordatorio
+
+5 / 20
+
+ESTADO
+
+QUÉ HACE EL
+
+RETROALIMENTACIÓN
+
+SALIDA
+
+Graba la instrucción
+
+Ojos abiertos, onda que sigue el
+
+Fin de voz o 6 s
+
+hasta detectar
+
+volumen de la voz, tono corto de
+
+sin voz
+
+silencio.
+
+inicio, LED azul.
+
+STT → NLU → gestor
+
+Mirada hacia arriba, puntos
+
+Intención,
+
+de diálogo.
+
+girando, LED morado.
+
+aclaración o
+
+SISTEMA
+
+ESCUCHA
+
+PROCESAMIENTO
+
+error
+EJECUCIÓN
+
+RESPUESTA
+
+La habilidad actúa:
+
+Icono de la acción (reloj,
+
+Resultado o
+
+guarda, consulta,
+
+campana, libro), barra de
+
+error
+
+sincroniza.
+
+progreso.
+
+Reproduce el TTS y
+
+Boca sincronizada con la
+
+muestra el texto.
+
+amplitud del audio, subtítulo en
+
+Fin del audio
+
+pantalla.
+NOTIFICACIÓN
+
+Anuncia un
+
+Cara sorprendida, campana,
+
+Respuesta del
+
+recordatorio y ofrece
+
+sonido de aviso, LED naranja
+
+usuario o 60 s
+
+posponer o
+
+intermitente.
+
+descartar.
+ERROR
+
+Informa el problema
+
+Cara confundida, mensaje breve
+
+Automática a los
+
+y regresa solo a
+
+hablado y escrito, LED rojo.
+
+3s
+
+ESPERA.
+
+Regla clave para 4.2. El motor expresivo no tiene lógica propia: solo se suscribe a state.changed.
+Así la cara nunca puede mostrar un estado distinto al real, y las apps reciben el mismo evento por
+WebSocket para mostrar el estado del dispositivo.
+
+Asistente Tecnológico Inteligente · Arquitectura concepto v0.1
+
+6 / 20
+
+Pipeline de voz y NLU
+
+2.1 · 2.2 · 2.3
+
+Del sonido a la acción, con validación antes de ejecutar cualquier cosa.
+
+Audio I/O
+
+STT
+
+NLU
+
+Diálogo
+
+Habilidad
+
+TTS
+
+Cara
+
+Usuario
+1
+
+"Oye Nova, recuérdame llamar al dentista mañana a las 5"
+state = Escucha
+
+2
+3
+
+audio
+state = Procesamiento
+
+4
+5
+
+texto + confianza
+6
+
+crear_recordatorio + parámetros
+¿faltan datos? ¿confianza suficiente?
+7
+
+8
+
+acción validada
+state = Ejecución
+
+9
+
+guardar en SQLite + outbox
+10
+
+11
+
+"Listo, mañana a las 5 de la tarde"
+12
+
+audio
+
+13
+14
+
+Audio I/O
+
+STT
+
+NLU
+
+state = Respuesta
+
+Diálogo
+
+Habilidad
+
+TTS
+
+state = Espera
+Cara
+
+Usuario
+
+Figura 3. Ciclo completo voz → reconocimiento → interpretación → acción → actualización →
+respuesta → expresión (criterio 6.1). "Nova" es un nombre provisional.
+
+Asistente Tecnológico Inteligente · Arquitectura concepto v0.1
+
+7 / 20
+
+Reconocimiento de voz (2.1)
+Arreglo de 2 o 4 micrófonos con supresión de ruido y control automático de ganancia, para
+tolerar variaciones de volumen y distancia.
+Palabra de activación local con openWakeWord; también se puede activar con el botón físico.
+STT principal: modelo Whisper multilingüe (en línea o faster-whisper local). Respaldo sin
+conexión: Vosk en español con vocabulario del dominio.
+Protocolo de pruebas con al menos 5 hablantes distintos, voz rápida y lenta, y 3 distancias. Se
+mide la tasa de error por palabra (WER) y se guarda en la documentación.
+
+Interpretación de comandos (2.2)
+NLU híbrido en dos capas. La primera es un clasificador rápido local para intenciones frecuentes
+(hora, fecha, confirmar, cancelar). La segunda es un LLM con salida estructurada (JSON Schema
+o function calling) que entiende paráfrasis y extrae parámetros. Una capa de validación revisa el
+esquema y normaliza fechas relativas ("mañana", "el viernes", "en media hora") con
+dateparser y la zona horaria del usuario.
+
+{
+"intent": "crear_recordatorio",
+"confidence": 0.93,
+"slots": {
+"contenido": "llamar al dentista",
+"fecha_hora": "2026-09-29T17:00:00-06:00",
+"recurrencia": null
+},
+"faltantes": [],
+"referencia": null
+}
+
+INTENCIÓN
+
+PARÁMETROS
+
+EJEMPLOS DE FRASES DISTINTAS
+
+consultar_hora
+
+zona (opcional)
+
+"¿Qué hora es?", "¿Me dices la hora?",
+"¿Qué horas son?"
+
+consultar_fecha
+
+día relativo (opcional)
+
+"¿Qué día es hoy?", "¿A cuánto
+estamos?", "¿Qué fecha es mañana?"
+
+Asistente Tecnológico Inteligente · Arquitectura concepto v0.1
+
+8 / 20
+
+INTENCIÓN
+
+PARÁMETROS
+
+EJEMPLOS DE FRASES DISTINTAS
+
+crear_recordatorio
+
+contenido,
+
+"Recuérdame…", "Avísame a las 8
+
+fecha_hora,
+
+que…", "No me dejes olvidar…"
+
+recurrencia
+listar_recordatorios
+
+rango (opcional)
+
+"¿Qué tengo mañana?", "Lee mis
+recordatorios"
+
+modificar_recordatorio
+
+eliminar_recordatorio
+
+referencia, campo,
+
+"Cámbialo a las 6", "Mueve lo del
+
+nuevo valor
+
+dentista al viernes"
+
+referencia
+
+"Borra ese", "Ya no me recuerdes lo
+del gimnasio"
+
+pregunta
+
+pregunta_general
+
+"¿Qué es un transistor?", "¿Cuántos
+planetas hay?"
+
+ayuda , cancelar , confirmar ,
+
+—
+
+"¿Qué puedes hacer?", "Olvídalo", "Sí",
+"No"
+
+negar
+
+Entradas no reconocidas, incompletas o ambiguas (2.3)
+CASO
+
+CÓMO SE DETECTA
+
+QUÉ RESPONDE
+
+ACCIÓN
+
+No se entendió
+
+Confianza de STT <
+
+"No te escuché bien, ¿me lo
+
+Vuelve a ESCUCHA
+
+el audio
+
+0.5 o texto vacío
+
+repites?"
+
+una vez; al segundo
+intento, ESPERA
+
+Intención
+
+intent =
+
+"No sé hacer eso todavía.
+
+desconocida
+
+desconocido o
+
+Puedo darte la hora, crear
+
+confianza < 0.6
+
+recordatorios o responder
+
+No ejecuta nada
+
+preguntas."
+Confianza
+
+0.6 ≤ confianza <
+
+"¿Quieres que te recuerde
+
+Espera confirmar o
+
+media
+
+0.8
+
+llamar al dentista mañana a
+
+negar
+
+las 5?"
+
+Asistente Tecnológico Inteligente · Arquitectura concepto v0.1
+
+9 / 20
+
+CASO
+
+CÓMO SE DETECTA
+
+QUÉ RESPONDE
+
+ACCIÓN
+
+Faltan
+
+Lista faltantes no
+
+"¿A qué hora te lo recuerdo?"
+
+Llena el dato faltante y
+
+parámetros
+
+vacía
+
+Ambigüedad
+
+La referencia
+
+"Tienes dos: dentista y
+
+coincide con varios
+
+gimnasio. ¿Cuál cambio?"
+
+conserva el resto
+Ofrece opciones
+
+elementos
+Acción
+
+eliminar_*
+
+destructiva
+
+"¿Borro el recordatorio del
+
+Siempre pide
+
+dentista?"
+
+confirmación
+
+Fecha inválida
+
+Validación de
+
+"Esa hora ya pasó, ¿lo pongo
+
+No guarda hasta
+
+o pasada
+
+fecha_hora
+
+para mañana?"
+
+confirmar
+
+Funciones del asistente
+
+3.1 · 3.2 · 3.3 · 3.4
+
+Cuatro habilidades que implementan la misma interfaz Skill.handle(action, context) →
+SkillResult .
+
+Consultas básicas (3.1)
+TimeDateSkill responde hora, fecha, día de
+
+Recordatorios (3.2)
+Crear: contenido, fecha, hora y recurrencia
+
+la semana y fechas relativas con el reloj del
+
+opcional, por lenguaje natural.
+
+dispositivo (sincronizado por NTP) y la zona
+
+Persistir: SQLite en el dispositivo y
+
+America/Mexico_City . Funciona sin internet.
+
+PostgreSQL en el backend.
+
+Se pueden agregar clima o cuenta regresiva
+
+Consultar: por día, rango o palabra ("¿qué
+
+con el mismo patrón.
+
+tengo del dentista?").
+Modificar y eliminar: por referencia, con
+
+Preguntas básicas (3.3)
+
+confirmación al borrar.
+
+QASkill envía la pregunta a un LLM con un
+
+reminder.due ; el dispositivo pasa a
+
+prompt que limita el alcance (tecnología,
+cultura general, uso del asistente) y pide
+respuestas de 2 o 3 oraciones aptas para voz.
+
+Asistente Tecnológico Inteligente · Arquitectura concepto v0.1
+
+Ejecutar: el scheduler local dispara
+NOTIFICACIÓN y el backend envía push al
+móvil y un aviso al escritorio.
+
+10 / 20
+
+Si la pregunta queda fuera del alcance, lo dice
+
+Posponer: "en 10 minutos" reprograma el
+
+claramente. Sin conexión, responde desde una
+
+mismo recordatorio.
+
+base local de preguntas frecuentes.
+
+Contexto de interacción (3.4)
+El gestor de diálogo guarda un SessionContext con los últimos 6 turnos, la última intención,
+los parámetros pendientes y las entidades mencionadas (por ejemplo, el último recordatorio
+creado o listado). El contexto vive 2 minutos después del último turno. Permite diálogos como
+este:
+Usuario:
+
+Recuérdame ir al gimnasio mañana.
+
+Asistente: ¿A qué hora?
+Usuario:
+
+← llena el dato faltante
+
+A las 7.
+
+Asistente: Listo, mañana a las 7 de la mañana.
+Usuario:
+
+Mejor cámbialo a las 8.
+
+← "lo" = último recordatorio
+
+Asistente: Hecho, lo moví a las 8.
+
+Interfaz expresiva y diseño de interfaces
+1.3 · 4.1 · 4.2 · 4.3
+
+Una cara con una expresión distinta para cada estado, dibujada igual en las tres plataformas.
+
+Asistente Tecnológico Inteligente · Arquitectura concepto v0.1
+
+11 / 20
+
+ESPERA
+
+ESCUCHA
+
+PROCESAMIENTO
+
+EJECUCIÓN
+
+RESPUESTA
+
+Ojos entreabiertos
+
+Ojos abiertos, onda
+de voz
+
+Mirada arriba,
+puntos
+
+Concentrado,
+progreso
+
+Boca sincronizada
+
+NOTIFICACIÓN
+
+ERROR
+
+Sorpresa, campana
+
+Confundido
+
+Distinción (4.1): cada estado cambia a la vez forma de ojos, boca, color y sonido, para que se
+distinga aun de reojo o sin ver el color.
+Correspondencia (4.2): el motor solo reacciona a state.changed ; la boca sigue la amplitud
+real del audio TTS y la onda de escucha sigue el volumen real del micrófono.
+Fluidez (4.3): transiciones interpoladas de 150 a 250 ms entre expresiones, 30 fps en la
+pantalla del dispositivo y cambio de estado visible en menos de 100 ms.
+Coherencia (1.3): un paquete compartido de design tokens (colores de estado, tipografía,
+iconos) y el mismo widget de la cara en Flutter para móvil y escritorio. En el dispositivo, la cara
+se dibuja con Pygame o con la misma app Flutter en modo kiosco.
+
+Ecosistema multiplataforma y sincronización
+5.1 · 5.2 · 5.3 · 5.4
+
+Cada plataforma tiene un papel propio, y todas comparten los mismos datos.
+FUNCIÓN
+
+DISPOSITIVO
+
+APP MÓVIL
+
+APP ESCRITORIO
+
+Interacción por
+
+Principal
+
+Botón de voz o chat de
+
+Chat de texto y
+
+texto
+
+micrófono
+
+voz
+
+Asistente Tecnológico Inteligente · Arquitectura concepto v0.1
+
+12 / 20
+
+FUNCIÓN
+
+DISPOSITIVO
+
+APP MÓVIL
+
+APP ESCRITORIO
+
+Cara expresiva y
+
+Pantalla completa
+
+Estado en vivo del
+
+Estado en vivo del
+
+dispositivo
+
+dispositivo
+
+Crear, consultar y
+
+CRUD completo +
+
+CRUD completo +
+
+disparar por voz
+
+notificación push
+
+vista de calendario
+
+Últimos turnos
+
+Consulta
+
+Consulta, búsqueda y
+
+estado
+Recordatorios
+
+Historial de
+conversación
+Configuración
+
+exportación
+Emparejamiento por
+
+Nombre del asistente,
+
+Todo lo anterior +
+
+código QR
+
+voz, horario silencioso
+
+diagnóstico y logs
+
+Protocolos
+REST sobre HTTPS para CRUD ( /reminders , /history , /settings , /devices ),
+documentado con OpenAPI.
+WebSocket (WSS) para eventos en tiempo real: reminder.created|updated|deleted ,
+device.state , reminder.fired .
+
+FCM para notificaciones push en el móvil cuando la app está cerrada.
+Autenticación: JWT por usuario; el dispositivo se empareja escaneando un código QR desde
+la app móvil y recibe un token de dispositivo.
+
+Modelo de datos compartido
+Reminder
+
+{ id: uuid, user_id, content, due_at: timestamptz, recurrence: rrule?,
+status: pending|fired|snoozed|done, origin: device|mobile|desktop,
+version: int, updated_at, deleted_at? }
+
+Device
+
+{ id, user_id, name, last_state, last_seen_at, app_version }
+
+Turn
+
+{ id, user_id, device_id, user_text, intent, response_text, created_at }
+
+Settings
+
+{ user_id, assistant_name, voice, quiet_hours, timezone }
+
+Estrategia de sincronización (5.4)
+El backend es la fuente de verdad. Cada cliente guarda una copia local (SQLite en dispositivo y
+apps).
+
+Asistente Tecnológico Inteligente · Arquitectura concepto v0.1
+
+13 / 20
+
+Los cambios locales entran a una outbox. Al haber conexión se envían, el servidor asigna la
+nueva version y difunde el evento por WebSocket a los demás clientes.
+Al reconectar, el cliente pide GET /sync?since=cursor para recibir lo que se perdió.
+Conflictos: gana la versión más reciente aceptada por el servidor; los borrados son lápidas
+( deleted_at ) para que no reaparezcan.
+Los disparos de recordatorio llevan un fire_id para que ninguna plataforma notifique dos
+veces el mismo evento.
+
+Robustez, errores y rendimiento
+
+6.2 · 6.3 · 6.4
+
+Errores previstos con detección, mensaje y camino de regreso a un estado válido.
+ERROR PREVISTO
+
+DETECCIÓN
+
+MANEJO
+
+ESTADO FINAL
+
+Sin internet
+
+Health check
+
+Cambia a STT y NLU locales; cambios
+
+ESPERA (modo
+
+falla o timeout
+
+a la outbox; avisa "Estoy sin conexión,
+
+degradado)
+
+algunas funciones son limitadas".
+STT o LLM no
+
+Timeout de 4 s
+
+Reintento único y luego respaldo local.
+
+responden
+
+RESPUESTA o
+ERROR
+
+Micrófono
+
+Excepción del
+
+Mensaje en pantalla y LED rojo;
+
+ERROR →
+
+desconectado
+
+dispositivo de
+
+reintenta abrir el micrófono cada 5 s.
+
+ESPERA al
+
+audio
+
+reconectar
+
+Falla una
+
+Excepción
+
+Se registra, se responde "No pude
+
+ERROR →
+
+habilidad
+
+capturada en el
+
+completar eso" y no se guardan
+
+ESPERA
+
+router
+
+cambios parciales.
+
+Proceso
+
+Watchdog sin
+
+systemd reinicia el servicio; el estado
+
+bloqueado
+
+latido por 10 s
+
+se restaura desde SQLite.
+
+Token expirado
+
+HTTP 401
+
+Renovación automática del token; la
+
+Sin cambio
+
+sincronización queda en cola.
+
+visible
+
+Asistente Tecnológico Inteligente · Arquitectura concepto v0.1
+
+ESPERA
+
+14 / 20
+
+Presupuesto de latencia (6.4)
+Meta: menos de 3 segundos entre el fin de la frase y el inicio de la respuesta hablada, en modo
+en línea.
+Fin de voz (VAD)
+
+300 ms
+
+STT en streaming
+
+700 ms
+
+NLU + validación
+
+900 ms
+
+Habilidad
+
+200 ms
+
+TTS primera oración
+
+500 ms
+
+Total (meta < 3000)
+
+2600 ms
+
+Técnicas: STT en streaming, respuestas del LLM limitadas en longitud, TTS que empieza a hablar
+con la primera oración y caché de frases frecuentes ("Listo", "¿A qué hora?").
+
+Pruebas de robustez (6.2)
+Sesión continua de 30 minutos con un guion de 50 interacciones válidas e inválidas, más
+pruebas de desconexión de red y de micrófono. Se registran fallos, tiempos y memoria; los
+resultados van a la documentación.
+
+Asistente Tecnológico Inteligente · Arquitectura concepto v0.1
+
+15 / 20
+
+Stack tecnológico
+Propuesta inicial, con una alternativa para cada pieza.
+CAPA
+
+PROPUESTA
+
+ALTERNATIVA
+
+MOTIVO
+
+Hardware
+
+Raspberry Pi 5 (8 GB), ReSpeaker
+
+Pi 4 + micrófono
+
+Potencia suficiente
+
+2/4-mic, pantalla DSI 5 in, altavoz 3
+
+USB
+
+para STT local y la
+
+W
+Núcleo
+
+Python 3.12, asyncio
+
+cara a 30 fps
+Node.js
+
+Mejor ecosistema de
+audio e IA
+
+Wake word
+
+openWakeWord + Silero VAD
+
+Porcupine
+
+/ VAD
+STT
+
+NLU
+
+Local, gratuito y
+entrenable
+
+Whisper (API o faster-whisper) + Vosk
+
+Google Speech-
+
+Tolerante a acentos y
+
+sin conexión
+
+to-Text
+
+ruido
+
+LLM con salida estructurada +
+
+Rasa NLU
+
+Entiende paráfrasis sin
+
+clasificador local + dateparser
+
+frases fijas
+
+TTS
+
+Piper (voz en español, local)
+
+Voz de la nube
+
+Rápido y sin conexión
+
+Cara
+
+Pygame o Flutter en modo kiosco
+
+Web en
+
+Animación fluida en la
+
+Chromium
+
+Pi
+
+kiosco
+Backend
+
+FastAPI, PostgreSQL, WebSocket,
+
+Supabase
+
+APScheduler, Docker Compose
+Apps
+
+Push
+
+Control total y fácil de
+reproducir
+
+Flutter (Android/iOS +
+
+React Native +
+
+Un solo código y una
+
+Windows/Linux/macOS)
+
+Electron
+
+sola identidad visual
+
+Firebase Cloud Messaging
+
+ntfy
+
+Estándar en Android
+
+Asistente Tecnológico Inteligente · Arquitectura concepto v0.1
+
+16 / 20
+
+Repositorio y prácticas
+
+7.1 · 7.2 · 7.3 · 7.4
+
+Un monorepo cuya estructura de carpetas replica la arquitectura.
+
+asistente/
+├── device/
+
+# Núcleo del asistente (Python)
+
+│
+
+├── core/
+
+# bus de eventos, máquina de estados, supervisor
+
+│
+
+├── audio/
+
+# captura, wake word, VAD
+
+│
+
+├── stt/
+
+# puerto + adaptadores (whisper, vosk)
+
+│
+
+├── nlu/
+
+# clasificador, cliente LLM, validación, fechas
+
+│
+
+├── dialogue/
+
+# contexto, aclaraciones, confirmaciones
+
+│
+
+├── skills/
+
+# time_date, reminders, qa, help
+
+│
+
+├── tts/
+
+# puerto + adaptador piper
+
+│
+
+├── expression/
+
+# motor de la cara
+
+│
+
+├── storage/
+
+# repositorios SQLite + outbox
+
+│
+
+├── sync/
+
+# cliente REST + WebSocket
+
+│
+
+└── tests/
+
+├── backend/
+
+# FastAPI + PostgreSQL + scheduler + push
+
+├── apps/assistant_app/
+
+# Flutter: móvil y escritorio
+
+├── shared/
+│
+
+├── contracts/
+
+# OpenAPI + JSON Schema de eventos e intenciones
+
+│
+
+└── design-tokens/
+
+# colores de estado, tipografía, iconos
+
+├── docs/
+
+# arquitectura, instalación, operación, pruebas
+
+├── deploy/
+
+# docker-compose, servicio systemd, imagen de la Pi
+
+└── README.md
+
+Ramas: main estable, develop de integración y feature/<modulo>-<tarea> con pull
+request y revisión de otro integrante.
+Commits: Conventional Commits ( feat(nlu): … , fix(sync): … ) desde la primera semana,
+para mostrar desarrollo continuo.
+Calidad: ruff y mypy en Python, flutter analyze , pruebas unitarias por módulo y CI con
+GitHub Actions.
+Documentación: este documento como base, diagramas en Mermaid dentro de docs/ , y
+OpenAPI generado por FastAPI.
+Reproducibilidad: docker compose up para el backend, script deploy/install_device.sh
+para la Pi, archivo .env.example con todas las variables.
+
+Asistente Tecnológico Inteligente · Arquitectura concepto v0.1
+
+17 / 20
+
+Trazabilidad con la rúbrica
+Dónde se atiende cada criterio y qué conviene mostrar como evidencia.
+CRITERIO
+
+PESO
+
+ELEMENTO DE ARQUITECTURA
+
+EVIDENCIA PARA LA DEMO
+
+1.1 Arquitectura del
+
+6%
+
+Figura 1, tabla de
+
+El código sigue la misma
+
+componentes, contratos en
+
+estructura que el diagrama
+
+sistema
+
+shared/
+
+1.2 Diseño de
+
+5%
+
+interacción
+1.3 Diseño de
+
+4%
+
+7%
+
+8%
+
+comandos
+2.3 Entradas no
+
+5%
+
+reconocidas
+3.1 Consultas básicas
+
+Design tokens compartidos,
+
+Las tres pantallas lado a lado
+
+widget de cara común
+
+de voz
+2.2 Interpretación de
+
+Recorrer los 7 estados en vivo
+
+estados
+
+interfaces
+2.1 Reconocimiento
+
+Máquina de estados de 7
+
+4%
+
+Arreglo de micrófonos, AGC,
+
+Tabla de WER con varios
+
+Whisper + respaldo
+
+hablantes
+
+NLU híbrido con salida
+
+Misma intención dicha de 3
+
+estructurada
+
+formas
+
+Umbrales de confianza,
+
+Frase ambigua, incompleta y
+
+aclaración, confirmación
+
+sin sentido
+
+TimeDateSkill
+
+Hora y fecha con distintas
+formulaciones
+
+3.2 Recordatorios
+
+3.3 Preguntas básicas
+
+8%
+
+5%
+
+ReminderSkill , scheduler,
+
+CRUD completo por voz y
+
+persistencia doble
+
+disparo a la hora
+
+QASkill con alcance definido
+
+Preguntas dentro y fuera del
+alcance
+
+3.4 Contexto
+
+4.1 Expresión visual
+
+3%
+
+5%
+
+Asistente Tecnológico Inteligente · Arquitectura concepto v0.1
+
+SessionContext con
+
+"Cámbialo a las 8" sin repetir
+
+referencias
+
+el recordatorio
+
+7 expresiones distintas
+
+Galería de expresiones
+
+18 / 20
+
+CRITERIO
+
+PESO
+
+ELEMENTO DE ARQUITECTURA
+
+EVIDENCIA PARA LA DEMO
+
+4.2 Correspondencia
+
+3%
+
+Cara suscrita solo a
+
+Provocar un error y ver la cara
+
+state.changed
+
+cambiar
+
+Transiciones de 150 a 250 ms,
+
+Video de una interacción
+
+30 fps
+
+completa
+
+Núcleo completo en la Pi, sin
+
+Demo con el dispositivo solo,
+
+PC
+
+conectado a la corriente
+
+Flutter + push + estado en vivo
+
+Recordatorio creado por voz
+
+4.3 Calidad de
+
+2%
+
+interacción
+5.1 Dispositivo físico
+
+5.2 App móvil
+
+5%
+
+3%
+
+aparece en el móvil
+5.3 App escritorio
+
+3%
+
+Flutter desktop con historial y
+
+Editar en escritorio y
+
+diagnóstico
+
+escuchar el cambio en el
+dispositivo
+
+5.4 Sincronización
+
+6.1 Integración
+
+4%
+
+7%
+
+completa
+6.2 Robustez
+
+4%
+
+Outbox + versiones +
+
+Cambio en una plataforma
+
+WebSocket
+
+reflejado en las otras dos
+
+Bus de eventos, pipeline de la
+
+Ciclo completo sin
+
+Figura 3
+
+intervención
+
+Supervisor, watchdog, systemd
+
+Resultados de la sesión de 30
+minutos
+
+6.3 Recuperación ante
+
+2%
+
+Catálogo de errores previstos
+
+errores
+6.4 Rendimiento
+
+7.1 Calidad del código
+
+Desconectar la red y el
+micrófono en vivo
+
+2%
+
+2%
+
+Presupuesto de latencia y
+
+Tiempos medidos por etapa
+
+streaming
+
+en los logs
+
+Puertos y adaptadores, linters
+
+Carpetas que coinciden con la
+arquitectura
+
+7.2 Control de
+
+1%
+
+versiones
+
+Asistente Tecnológico Inteligente · Arquitectura concepto v0.1
+
+Flujo de ramas y Conventional
+
+Historial de PR por integrante
+
+Commits
+
+19 / 20
+
+CRITERIO
+
+PESO
+
+ELEMENTO DE ARQUITECTURA
+
+EVIDENCIA PARA LA DEMO
+
+7.3 Documentación
+
+1%
+
+docs/ + OpenAPI
+
+Documento de arquitectura y
+guía de operación
+
+7.4 Instalación
+
+1%
+
+Docker Compose, script de la
+
+Instalación desde cero
+
+Pi, .env.example
+
+siguiendo el README
+
+Decisiones abiertas
+Puntos para acordar con el equipo antes de empezar a programar.
+STT en la nube o local: la nube da mejor precisión y menor carga en la Pi; local da
+independencia de la red. Propuesta: nube como principal y local como respaldo.
+Proveedor del LLM: uno en la nube con salida estructurada, o un modelo pequeño local (por
+ejemplo, con Ollama en una PC del laboratorio). Un modelo local en la PC contradice el criterio
+5.1 si es indispensable.
+Backend propio o Supabase: FastAPI demuestra más ingeniería; Supabase acelera la
+sincronización y la autenticación.
+Nombre y palabra de activación: "Nova" es provisional; conviene una palabra de 2 o 3 sílabas
+poco común en el habla diaria.
+Reparto del equipo: sugerencia por capas: dispositivo y voz, NLU y habilidades, backend y
+sincronización, apps y diseño.
+
+Arquitectura concepto para el proyecto "Asistente Tecnológico Inteligente", alineada con la rúbrica de evaluación
+(100%). Versión 0.1, septiembre de 2026.
+
+Asistente Tecnológico Inteligente · Arquitectura concepto v0.1
+
+20 / 20
+
+

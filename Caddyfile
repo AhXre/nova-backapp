@@ -1,0 +1,13 @@
+{$NOVA_DOMAIN} {
+	encode zstd gzip
+
+	reverse_proxy api:8000 {
+		header_up X-Forwarded-Proto {scheme}
+	}
+
+	header {
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		Referrer-Policy no-referrer
+	}
+}
