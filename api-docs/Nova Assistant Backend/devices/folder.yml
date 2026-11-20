@@ -1,0 +1,6 @@
+info:
+  name: devices
+  type: folder
+
+request:
+  auth: inherit

@@ -1,0 +1,6 @@
+info:
+  name: reminders
+  type: folder
+
+request:
+  auth: inherit

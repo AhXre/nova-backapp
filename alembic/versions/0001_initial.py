@@ -16,13 +16,13 @@ down_revision: str | None = None
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
-UUID = postgresql.UUID(as_uuid=True)
+UUID_TYPE = postgresql.UUID(as_uuid=True)
 
 
 def upgrade() -> None:
     op.create_table(
         "users",
-        sa.Column("id", UUID(), nullable=False),
+        sa.Column("id", UUID_TYPE, nullable=False),
         sa.Column("email", sa.String(320), nullable=False),
         sa.Column("password_hash", sa.String(255), nullable=False),
         sa.Column(
@@ -35,8 +35,8 @@ def upgrade() -> None:
 
     op.create_table(
         "refresh_tokens",
-        sa.Column("id", UUID(), nullable=False),
-        sa.Column("user_id", UUID(), nullable=False),
+        sa.Column("id", UUID_TYPE, nullable=False),
+        sa.Column("user_id", UUID_TYPE, nullable=False),
         sa.Column("token_hash", sa.String(64), nullable=False),
         sa.Column("expires_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column(
@@ -50,15 +50,15 @@ def upgrade() -> None:
 
     op.create_table(
         "pairing_codes",
-        sa.Column("id", UUID(), nullable=False),
-        sa.Column("user_id", UUID(), nullable=False),
+        sa.Column("id", UUID_TYPE, nullable=False),
+        sa.Column("user_id", UUID_TYPE, nullable=False),
         sa.Column("code_hash", sa.String(64), nullable=False),
         sa.Column("expires_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column(
             "created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
         ),
         sa.Column("consumed_at", sa.DateTime(timezone=True), nullable=True),
-        sa.Column("device_id", UUID(), nullable=True),
+        sa.Column("device_id", UUID_TYPE, nullable=True),
         sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
     )
@@ -66,8 +66,8 @@ def upgrade() -> None:
 
     op.create_table(
         "devices",
-        sa.Column("id", UUID(), nullable=False),
-        sa.Column("user_id", UUID(), nullable=False),
+        sa.Column("id", UUID_TYPE, nullable=False),
+        sa.Column("user_id", UUID_TYPE, nullable=False),
         sa.Column("name", sa.String(100), nullable=False),
         sa.Column("last_state", sa.String(32), nullable=False),
         sa.Column("last_seen_at", sa.DateTime(timezone=True), nullable=True),
@@ -82,8 +82,8 @@ def upgrade() -> None:
 
     op.create_table(
         "reminders",
-        sa.Column("id", UUID(), nullable=False),
-        sa.Column("user_id", UUID(), nullable=False),
+        sa.Column("id", UUID_TYPE, nullable=False),
+        sa.Column("user_id", UUID_TYPE, nullable=False),
         sa.Column("content", sa.String(500), nullable=False),
         sa.Column("due_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("recurrence", sa.String(255), nullable=True),
@@ -112,9 +112,9 @@ def upgrade() -> None:
 
     op.create_table(
         "reminder_fires",
-        sa.Column("id", UUID(), nullable=False),
-        sa.Column("reminder_id", UUID(), nullable=False),
-        sa.Column("user_id", UUID(), nullable=False),
+        sa.Column("id", UUID_TYPE, nullable=False),
+        sa.Column("reminder_id", UUID_TYPE, nullable=False),
+        sa.Column("user_id", UUID_TYPE, nullable=False),
         sa.Column(
             "fired_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
         ),
@@ -128,9 +128,9 @@ def upgrade() -> None:
     op.create_table(
         "change_log",
         sa.Column("id", sa.BigInteger(), autoincrement=True, nullable=False),
-        sa.Column("user_id", UUID(), nullable=False),
+        sa.Column("user_id", UUID_TYPE, nullable=False),
         sa.Column("aggregate_type", sa.String(32), nullable=False),
-        sa.Column("aggregate_id", UUID(), nullable=False),
+        sa.Column("aggregate_id", UUID_TYPE, nullable=False),
         sa.Column("version", sa.Integer(), nullable=False),
         sa.Column("payload", postgresql.JSONB(), nullable=False),
         sa.Column(

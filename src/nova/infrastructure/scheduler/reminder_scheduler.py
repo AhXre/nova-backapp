@@ -39,8 +39,9 @@ class ReminderScheduler:
         )
 
     async def start(self) -> None:
+        _bind(self)
         self.scheduler.add_job(
-            self._reconcile,
+            "nova.infrastructure.scheduler.reminder_scheduler:reconcile_job",
             trigger="interval",
             seconds=30,
             id="nova-reconcile",
@@ -71,7 +72,7 @@ class ReminderScheduler:
             if job_id in existing:
                 continue
             self.scheduler.add_job(
-                self._fire,
+                "nova.infrastructure.scheduler.reminder_scheduler:fire_job",
                 trigger="date",
                 run_date=due_at,
                 args=[reminder_id, fire_id],
@@ -85,3 +86,21 @@ class ReminderScheduler:
         async with self._uow_factory() as uow:
             use_case = FireReminder(uow, self._clock, self._publisher, self._push)
             await use_case.execute(reminder_id, fire_id)
+
+
+_current: ReminderScheduler | None = None
+
+
+def _bind(scheduler: ReminderScheduler) -> None:
+    global _current
+    _current = scheduler
+
+
+async def reconcile_job() -> None:
+    if _current is not None:
+        await _current._reconcile()
+
+
+async def fire_job(reminder_id: UUID, fire_id: UUID) -> None:
+    if _current is not None:
+        await _current._fire(reminder_id, fire_id)

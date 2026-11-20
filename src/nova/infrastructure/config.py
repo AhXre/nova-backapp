@@ -1,7 +1,9 @@
+import json
 from functools import lru_cache
+from typing import Annotated
 
 from pydantic import Field, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -26,7 +28,9 @@ class Settings(BaseSettings):
     firebase_credentials_json: str | None = None
     fcm_enabled: bool = True
 
-    cors_origins: list[str] = Field(default_factory=lambda: ["http://localhost:5173"])
+    cors_origins: Annotated[list[str], NoDecode] = Field(
+        default_factory=lambda: ["http://localhost:5173"]
+    )
     docs_enabled: bool = True
     rate_limit_per_minute: int = 10
     sync_default_limit: int = 100
@@ -37,6 +41,15 @@ class Settings(BaseSettings):
     @classmethod
     def split_origins(cls, value: object) -> object:
         if isinstance(value, str):
+            stripped = value.strip()
+            if stripped.startswith("["):
+                try:
+                    parsed = json.loads(stripped)
+                except json.JSONDecodeError:
+                    pass
+                else:
+                    if isinstance(parsed, list):
+                        return parsed
             return [origin.strip() for origin in value.split(",") if origin.strip()]
         return value
 

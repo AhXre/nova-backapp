@@ -1,0 +1,101 @@
+info:
+  name: Create Reminder
+  type: http
+  seq: 1
+  tags:
+    - reminders
+
+http:
+  method: POST
+  url: "{{baseUrl}}/api/v1/reminders"
+  body:
+    type: json
+    data: |-
+      {
+        "content": "",
+        "due_at": "",
+        "recurrence": "",
+        "origin": "device"
+      }
+  auth:
+    type: bearer
+    token: "{{token}}"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+
+examples:
+  - name: 201 Response
+    description: Successful Response
+    request:
+      url: "{{baseUrl}}/api/v1/reminders"
+      method: POST
+      body:
+        type: json
+        data: |-
+          {
+            "content": "",
+            "due_at": "",
+            "recurrence": "",
+            "origin": "device"
+          }
+    response:
+      status: 201
+      statusText: Created
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          {
+            "id": "",
+            "user_id": "",
+            "content": "",
+            "due_at": "",
+            "recurrence": "",
+            "status": "pending",
+            "origin": "device",
+            "version": 0,
+            "created_at": "",
+            "updated_at": "",
+            "deleted_at": ""
+          }
+  - name: 422 Response
+    description: Validation Error
+    request:
+      url: "{{baseUrl}}/api/v1/reminders"
+      method: POST
+      body:
+        type: json
+        data: |-
+          {
+            "content": "",
+            "due_at": "",
+            "recurrence": "",
+            "origin": "device"
+          }
+    response:
+      status: 422
+      statusText: Unprocessable Entity
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          {
+            "detail": [
+              {
+                "loc": [],
+                "msg": "",
+                "type": "",
+                "input": "",
+                "ctx": {}
+              }
+            ]
+          }

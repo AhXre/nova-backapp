@@ -1,0 +1,5 @@
+name: nova-backend
+variables:
+  - name: baseUrl
+    value: localhost
+    description: ""

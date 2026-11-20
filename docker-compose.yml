@@ -113,7 +113,7 @@ services:
     environment:
       NOVA_DOMAIN: ${NOVA_DOMAIN:-localhost}
     volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro,z
       - caddy_data:/data
       - caddy_config:/config
     depends_on:

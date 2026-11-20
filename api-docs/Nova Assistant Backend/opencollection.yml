@@ -1,0 +1,14 @@
+opencollection: 1.0.0
+
+info:
+  name: Nova Assistant Backend
+
+docs:
+  content: Backend de sincronización para el Asistente Tecnológico Inteligente.
+  type: text/markdown
+bundled: false
+extensions:
+  bruno:
+    ignore:
+      - node_modules
+      - .git

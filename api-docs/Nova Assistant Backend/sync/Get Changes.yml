@@ -1,0 +1,95 @@
+info:
+  name: Get Changes
+  type: http
+  seq: 1
+  tags:
+    - sync
+
+http:
+  method: GET
+  url: "{{baseUrl}}/api/v1/sync"
+  params:
+    - name: since
+      value: "0"
+      type: query
+    - name: limit
+      value: "100"
+      type: query
+  auth:
+    type: bearer
+    token: "{{token}}"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+
+examples:
+  - name: 200 Response
+    description: Successful Response
+    request:
+      url: "{{baseUrl}}/api/v1/sync"
+      method: GET
+      params:
+        - name: since
+          value: "0"
+          type: query
+        - name: limit
+          value: "100"
+          type: query
+    response:
+      status: 200
+      statusText: OK
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          {
+            "changes": [
+              {
+                "id": 0,
+                "aggregate_type": "",
+                "aggregate_id": "",
+                "version": 0,
+                "payload": {},
+                "occurred_at": ""
+              }
+            ],
+            "next_cursor": 0
+          }
+  - name: 422 Response
+    description: Validation Error
+    request:
+      url: "{{baseUrl}}/api/v1/sync"
+      method: GET
+      params:
+        - name: since
+          value: "0"
+          type: query
+        - name: limit
+          value: "100"
+          type: query
+    response:
+      status: 422
+      statusText: Unprocessable Entity
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          {
+            "detail": [
+              {
+                "loc": [],
+                "msg": "",
+                "type": "",
+                "input": "",
+                "ctx": {}
+              }
+            ]
+          }
